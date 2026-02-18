@@ -21,6 +21,7 @@ export default function Dashboard() {
 
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'view' | 'send'>('view');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -57,54 +58,66 @@ export default function Dashboard() {
         } as Appointment;
       });
 
-      // Front-end filtering
-      const filtered = enrichedAppointments.filter(apt => {
-        // Search filter
-        const matchesSearch = searchTerm === '' ||
-          apt.paciente_nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          apt.paciente_telefone?.includes(searchTerm) ||
-          apt.appointment_id?.toString().includes(searchTerm);
+      // Front-end filtering and sorting
+      const filteredAndSorted = enrichedAppointments
+        .filter(apt => {
+          // Search filter
+          const matchesSearch = searchTerm === '' ||
+            apt.paciente_nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            apt.paciente_telefone?.includes(searchTerm) ||
+            apt.appointment_id?.toString().includes(searchTerm);
 
-        // Tab filter (Hoje e próximos vs Anteriores)
-        const aptDateParts = apt.data_do_atendimento.split('/'); // DD/MM/YYYY
-        const aptDateObj = new Date(parseInt(aptDateParts[2]), parseInt(aptDateParts[1]) - 1, parseInt(aptDateParts[0]));
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+          // Tab filter (Hoje e próximos vs Anteriores)
+          const aptDateParts = apt.data_do_atendimento.split('/'); // DD/MM/YYYY
+          const aptDateObj = new Date(parseInt(aptDateParts[2]), parseInt(aptDateParts[1]) - 1, parseInt(aptDateParts[0]));
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-        const isPast = aptDateObj < today;
-        const matchesTab = activeTab === 'hoje' ? !isPast : isPast;
+          const isPast = aptDateObj < today;
+          const matchesTab = activeTab === 'hoje' ? !isPast : isPast;
 
-        // Professional filter
-        const matchesProf = professionalId === 'all' || apt.professional_id.toString() === professionalId;
+          // Professional filter
+          const matchesProf = professionalId === 'all' || apt.professional_id.toString() === professionalId;
 
-        // Status filter
-        const matchesStatus =
-          status === 'Todos' ||
-          (status === 'Notificado' && apt.notificado) ||
-          (status === 'Não Notificado' && !apt.notificado && !apt.erro) ||
-          (status === 'Erro' && apt.erro);
+          // Status filter
+          const matchesStatus =
+            status === 'Todos' ||
+            (status === 'Notificado' && apt.notificado) ||
+            (status === 'Não Notificado' && !apt.notificado && !apt.erro) ||
+            (status === 'Erro' && apt.erro);
 
-        // Turno filter
-        const aptHour = parseInt(apt.horario_inicial_do_atendimento?.split(':')[0] || '0');
-        const matchesTurno =
-          turno === 'Todos' ||
-          (turno === 'Manhã' && aptHour < 12) ||
-          (turno === 'Tarde' && aptHour >= 12);
+          // Turno filter
+          const aptHour = parseInt(apt.horario_inicial_do_atendimento?.split(':')[0] || '0');
+          const matchesTurno =
+            turno === 'Todos' ||
+            (turno === 'Manhã' && aptHour < 12) ||
+            (turno === 'Tarde' && aptHour >= 12);
 
-        // Date Picker filter - only filter if date is explicitly changed or we want a specific day
-        let matchesDatePicker = true;
-        if (date) {
-          const selectedDateFormatted = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR');
-          matchesDatePicker = apt.data_do_atendimento === selectedDateFormatted;
-        } else {
-          // If no date selected, let matchesTab handle it
-          matchesDatePicker = true;
-        }
+          // Date Picker filter
+          let matchesDatePicker = true;
+          if (date) {
+            const selectedDateFormatted = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR');
+            matchesDatePicker = apt.data_do_atendimento === selectedDateFormatted;
+          }
 
-        return matchesSearch && matchesTab && matchesProf && matchesStatus && matchesTurno && matchesDatePicker;
-      });
+          return matchesSearch && matchesTab && matchesProf && matchesStatus && matchesTurno && matchesDatePicker;
+        })
+        .sort((a, b) => {
+          // Sort by Date first
+          const dateA = a.data_do_atendimento.split('/').reverse().join('');
+          const dateB = b.data_do_atendimento.split('/').reverse().join('');
 
-      setAppointments(filtered);
+          if (dateA !== dateB) {
+            return activeTab === 'hoje'
+              ? dateA.localeCompare(dateB) // Próximos: Ascendente
+              : dateB.localeCompare(dateA); // Anteriores: Descendente
+          }
+
+          // Then by Time
+          return a.horario_inicial_do_atendimento.localeCompare(b.horario_inicial_do_atendimento);
+        });
+
+      setAppointments(filteredAndSorted);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -116,10 +129,9 @@ export default function Dashboard() {
     fetchData();
   }, [fetchData]);
 
-  const handleSendNotification = async (appointment: Appointment) => {
+  const handleSendNotification = async (appointment: Appointment, manualMessage?: string) => {
     try {
-      // Optimistic loading state or just handle properly
-      console.log('Sending notification for:', appointment.appointment_id);
+      console.log('Triggering notification for:', appointment.appointment_id);
 
       const prof = professionals.find(p => p.professionals_id == appointment.professional_id);
 
@@ -130,57 +142,22 @@ export default function Dashboard() {
         patient_phone: appointment.paciente_telefone,
         appointment_date: appointment.data_do_atendimento,
         appointment_time: appointment.horario_inicial_do_atendimento,
-        message_body_markdown: `Olá ${appointment.paciente_nome}, lembrando da sua consulta com ${prof?.professionals_name || appointment.professional_name} dia ${appointment.data_do_atendimento} às ${appointment.horario_inicial_do_atendimento}.`,
+        message_body_markdown: manualMessage || `Olá ${appointment.paciente_nome}, lembrando da sua consulta com ${prof?.professionals_name || appointment.professional_name} dia ${appointment.data_do_atendimento} às ${appointment.horario_inicial_do_atendimento}.`,
         send_interval_seconds: 30
       };
 
-      const response = await fetch('https://webhook.mivus.com.br/webhook/sistema-notificador-mivus-agendamentos', {
+      // Fire and forget - não aguarda resposta do webhook
+      fetch('https://webhook.mivus.com.br/webhook/sistema-notificador-mivus-agendamentos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-      });
+      }).catch(err => console.error('Fetch error:', err));
 
-      if (response.ok) {
-        // Update DB
-        const { error: dbError } = await supabase
-          .from('clinicorp_appointments')
-          .update({ notificado: true, erro: false })
-          .eq('appointment_id', appointment.appointment_id);
+      // Opcional: Você pode adicionar um feedback visual rápido aqui se desejar, 
+      // mas como o webhook altera o banco, o status atualizará na próxima carga.
 
-        if (dbError) throw dbError;
-
-        // Update local state
-        setAppointments(prev => prev.map(a =>
-          a.appointment_id === appointment.appointment_id
-            ? { ...a, notificado: true, erro: false }
-            : a
-        ));
-
-        if (selectedAppointment?.appointment_id === appointment.appointment_id) {
-          setSelectedAppointment({ ...selectedAppointment, notificado: true, erro: false });
-        }
-      } else {
-        const result = await response.json();
-        throw new Error(result.message || 'Erro do servidor');
-      }
     } catch (error: any) {
-      console.error('Send error:', error);
-
-      // Update DB with error status
-      await supabase
-        .from('clinicorp_appointments')
-        .update({ erro: true })
-        .eq('appointment_id', appointment.appointment_id);
-
-      setAppointments(prev => prev.map(a =>
-        a.appointment_id === appointment.appointment_id
-          ? { ...a, erro: true, error_message: error.message }
-          : a
-      ));
-
-      if (selectedAppointment?.appointment_id === appointment.appointment_id) {
-        setSelectedAppointment({ ...selectedAppointment, erro: true, error_message: error.message });
-      }
+      console.error('Trigger error:', error);
     }
   };
 
@@ -207,8 +184,9 @@ export default function Dashboard() {
     }
   };
 
-  const handleViewDetails = (appointment: Appointment) => {
+  const handleViewDetails = (appointment: Appointment, mode: 'view' | 'send' = 'view') => {
     setSelectedAppointment(appointment);
+    setModalMode(mode);
     setIsModalOpen(true);
   };
 
@@ -251,6 +229,7 @@ export default function Dashboard() {
           appointment={selectedAppointment}
           onMarkAsNotified={handleMarkAsNotified}
           onSendNotification={handleSendNotification}
+          initialMode={modalMode}
         />
       </div>
     </main>

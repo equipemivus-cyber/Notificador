@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 interface AppointmentsTableProps {
     appointments: Appointment[];
     loading: boolean;
-    onViewDetails: (appointment: Appointment) => void;
+    onViewDetails: (appointment: Appointment, mode?: 'view' | 'send') => void;
     onSendNotification: (appointment: Appointment) => void;
     onRetry: (appointment: Appointment) => void;
 }
@@ -22,6 +22,7 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
 }) => {
     const { role } = useAuth();
     const isAdmin = role === 'admin';
+
     if (loading) {
         return (
             <div className="w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-h-[400px] flex items-center justify-center">
@@ -47,6 +48,43 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
         );
     }
 
+    const renderStatus = (apt: Appointment) => {
+        const isPhoneInvalid = !apt.paciente_telefone || apt.paciente_telefone === '0' || apt.paciente_telefone.length < 8;
+
+        if (isPhoneInvalid) {
+            return (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100">
+                    <PhoneOff size={12} className="mr-1" />
+                    Sem telefone
+                </span>
+            );
+        }
+
+        if (apt.erro) {
+            return (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+                    <AlertCircle size={12} className="mr-1" />
+                    Erro
+                </span>
+            );
+        }
+
+        if (apt.notificado) {
+            return (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                    <CheckCircle2 size={12} className="mr-1" />
+                    Notificado
+                </span>
+            );
+        }
+
+        return (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                Pendente
+            </span>
+        );
+    };
+
     return (
         <div className="w-full h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             <div className="flex-1 overflow-auto scroll-smooth">
@@ -58,14 +96,13 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
                             <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</th>
                             <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Horário</th>
                             <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Profissional</th>
-                            <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Turno</th>
                             <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                             <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Ações</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {appointments.map((apt) => (
-                            <tr key={apt.appointment_id} className="hover:bg-slate-50/50 transition-colors group">
+                        {appointments.map((apt, index) => (
+                            <tr key={`${apt.appointment_id}-${index}`} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="font-semibold text-slate-800 uppercase text-sm truncate max-w-[200px]" title={apt.paciente_nome}>
                                         {apt.paciente_nome}
@@ -82,9 +119,6 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className="text-slate-500 text-sm">{apt.professional_name || 'N/A'}</span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="text-slate-500 text-sm">{getTurno(apt.horario_inicial_do_atendimento)}</span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     {renderStatus(apt)}
@@ -113,7 +147,7 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
                                         )}
 
                                         <button
-                                            onClick={() => onSendNotification(apt)}
+                                            onClick={() => onViewDetails(apt, 'send')}
                                             disabled={!isAdmin || apt.notificado || apt.paciente_telefone === '0' || !apt.paciente_telefone || apt.paciente_telefone.length < 8}
                                             className={`p-1.5 transition-colors rounded-md border shadow-sm ${(!isAdmin || apt.notificado || apt.paciente_telefone === '0' || !apt.paciente_telefone || apt.paciente_telefone.length < 8)
                                                 ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed'
@@ -131,48 +165,6 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
                 </table>
             </div>
         </div>
-    );
-};
-
-const getTurno = (time: string) => {
-    const hour = parseInt(time.split(':')[0]);
-    return hour < 12 ? 'Manhã' : 'Tarde';
-};
-
-const renderStatus = (apt: Appointment) => {
-    const isPhoneInvalid = !apt.paciente_telefone || apt.paciente_telefone === '0' || apt.paciente_telefone.length < 8;
-
-    if (isPhoneInvalid) {
-        return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100">
-                <PhoneOff size={12} className="mr-1" />
-                Sem telefone
-            </span>
-        );
-    }
-
-    if (apt.erro) {
-        return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">
-                <AlertCircle size={12} className="mr-1" />
-                Erro
-            </span>
-        );
-    }
-
-    if (apt.notificado) {
-        return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                <CheckCircle2 size={12} className="mr-1" />
-                Notificado
-            </span>
-        );
-    }
-
-    return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            Pendente
-        </span>
     );
 };
 

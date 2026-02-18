@@ -133,9 +133,9 @@ export default function ConfigPage() {
                         <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-2">Profissionais</h2>
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto">
-                                {professionals.map((prof) => (
+                                {professionals.map((prof, index) => (
                                     <button
-                                        key={prof.professionals_id}
+                                        key={`${prof.professionals_id}-${index}`}
                                         onClick={() => setSelectedProfId(prof.professionals_id)}
                                         className={`w-full text-left px-4 py-3 text-sm transition-all flex items-center space-x-3 ${selectedProfId === prof.professionals_id
                                             ? 'bg-blue-50 text-blue-700 font-bold'
