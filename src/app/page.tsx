@@ -96,7 +96,10 @@ export default function Dashboard() {
           // Date Picker filter
           let matchesDatePicker = true;
           if (date) {
-            const selectedDateFormatted = new Date(date + 'T12:00:00').toLocaleDateString('pt-BR');
+            // Parse manual seguro: evita inconsistência de locale no toLocaleDateString
+            // date vem do input como "YYYY-MM-DD"
+            const [year, month, day] = date.split('-');
+            const selectedDateFormatted = `${day}/${month}/${year}`;
             matchesDatePicker = apt.data_do_atendimento === selectedDateFormatted;
           }
 
