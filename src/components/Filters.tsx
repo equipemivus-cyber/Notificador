@@ -14,8 +14,8 @@ interface FiltersProps {
     turno: FilterTurno;
     setTurno: (turno: FilterTurno) => void;
     professionals: Professional[];
-    activeTab: 'hoje' | 'anteriores';
-    setActiveTab: (tab: 'hoje' | 'anteriores') => void;
+    activeTab: 'hoje' | 'anteriores' | 'este-mes';
+    setActiveTab: (tab: 'hoje' | 'anteriores' | 'este-mes') => void;
 }
 
 export const Filters: React.FC<FiltersProps> = ({
@@ -37,8 +37,8 @@ export const Filters: React.FC<FiltersProps> = ({
                 <button
                     onClick={() => setActiveTab('hoje')}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'hoje'
-                            ? 'bg-slate-700 text-white shadow-sm'
-                            : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
+                        ? 'bg-slate-700 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
                         }`}
                 >
                     <Calendar size={16} />
@@ -47,12 +47,22 @@ export const Filters: React.FC<FiltersProps> = ({
                 <button
                     onClick={() => setActiveTab('anteriores')}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'anteriores'
-                            ? 'bg-slate-700 text-white shadow-sm'
-                            : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
+                        ? 'bg-slate-700 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
                         }`}
                 >
                     <Filter size={16} />
                     <span>Anteriores</span>
+                </button>
+                <button
+                    onClick={() => setActiveTab('este-mes')}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'este-mes'
+                        ? 'bg-slate-700 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200'
+                        }`}
+                >
+                    <Clock size={16} />
+                    <span>Este Mês</span>
                 </button>
             </div>
 
