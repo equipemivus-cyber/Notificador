@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from '@/components/Header';
 import { supabase } from '@/lib/supabase';
 import { Professional } from '@/types';
@@ -14,6 +14,7 @@ interface MessageConfig {
     days_before: number;
     monday_days_before: number;
     is_active: boolean;
+    trigger_time: string;
 }
 
 export default function ConfigPage() {
@@ -25,24 +26,64 @@ export default function ConfigPage() {
         template_afternoon: 'Olá {paciente_nome}, lembrando da sua consulta com {profissional_nome} dia {data_atendimento} às {horario_atendimento}.',
         days_before: 1,
         monday_days_before: 2,
-        is_active: true
+        is_active: true,
+        trigger_time: '09:00'
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [configs, setConfigs] = useState<Record<number, boolean>>({});
+    const [activeTemplate, setActiveTemplate] = useState<'morning' | 'afternoon'>('morning');
     const { role } = useAuth();
     const isAdmin = role === 'admin';
 
     useEffect(() => {
+        if (message) {
+            const timer = setTimeout(() => setMessage(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [message]);
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    const adjustHeight = () => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight}px`;
+        }
+    };
+
+    useEffect(() => {
+        adjustHeight();
+    }, [config, activeTemplate]);
+
+    useEffect(() => {
         async function loadProfessionals() {
-            const { data } = await supabase
-                .from('clinicorp_professionals')
-                .select('*')
-                .eq('business_id', '6330482543820800')
-                .order('professionals_name');
-            if (data) {
-                setProfessionals(data);
-                if (data.length > 0) setSelectedProfId(data[0].professionals_id);
+            setLoading(true);
+            const [{ data: profs }, { data: confs }] = await Promise.all([
+                supabase
+                    .from('clinicorp_professionals')
+                    .select('*')
+                    .eq('business_id', '6330482543820800')
+                    .order('professionals_name'),
+                supabase
+                    .from('clinicorp_appointments_message_configs')
+                    .select('professional_id, is_active')
+                    .eq('business_id', '6330482543820800')
+            ]);
+
+            if (profs) {
+                setProfessionals(profs);
+                if (profs.length > 0) setSelectedProfId(profs[0].professionals_id);
+            }
+
+            if (confs) {
+                const configMap = confs.reduce((acc, c) => ({
+                    ...acc,
+                    [c.professional_id]: c.is_active
+                }), {});
+                setConfigs(configMap);
             }
             setLoading(false);
         }
@@ -70,7 +111,8 @@ export default function ConfigPage() {
                 template_afternoon: data.template_afternoon,
                 days_before: data.days_before,
                 monday_days_before: data.monday_days_before,
-                is_active: data.is_active ?? true
+                is_active: data.is_active ?? true,
+                trigger_time: data.trigger_time?.substring(0, 5) ?? '09:00'
             });
         } else {
             // Set default for new config
@@ -80,7 +122,8 @@ export default function ConfigPage() {
                 template_afternoon: 'Olá {paciente_nome}, lembrando da sua consulta com {profissional_nome} dia {data_atendimento} às {horario_atendimento}.',
                 days_before: 1,
                 monday_days_before: 2,
-                is_active: true
+                is_active: true,
+                trigger_time: '09:00'
             });
         }
     }
@@ -101,10 +144,12 @@ export default function ConfigPage() {
                     days_before: config.days_before,
                     monday_days_before: config.monday_days_before,
                     is_active: config.is_active,
+                    trigger_time: config.trigger_time,
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'professional_id' });
 
             if (error) throw error;
+            setConfigs(prev => ({ ...prev, [selectedProfId]: config.is_active }));
             setMessage({ type: 'success', text: 'Configuração salva com sucesso!' });
         } catch (err) {
             console.error(err);
@@ -115,6 +160,19 @@ export default function ConfigPage() {
     }
 
     const selectedProf = professionals.find(p => p.professionals_id === selectedProfId);
+
+    const formatWhatsAppText = (text: string, isPreview: boolean = false) => {
+        if (!text) return '';
+
+        let formatted = text
+            .replace(/\*(.*?)\*/g, isPreview ? '<strong class="font-bold">*$1*</strong>' : '<strong>$1</strong>')
+            .replace(/_(.*?)_/g, isPreview ? '<em class="italic">_$1_</em>' : '<em>$1</em>')
+            .replace(/~(.*?)~/g, isPreview ? '<del>~$1~</del>' : '<del>$1</del>')
+            .replace(/\{(.*?)\}/g, '<span class="text-blue-600 font-bold bg-blue-50/50 px-1 rounded">{$1}</span>')
+            .replace(/\n/g, '<br/>');
+
+        return formatted;
+    };
 
     return (
         <main className="h-full flex flex-col overflow-hidden bg-slate-50">
@@ -133,21 +191,25 @@ export default function ConfigPage() {
                         <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-2">Profissionais</h2>
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto">
-                                {professionals.map((prof, index) => (
-                                    <button
-                                        key={`${prof.professionals_id}-${index}`}
-                                        onClick={() => setSelectedProfId(prof.professionals_id)}
-                                        className={`w-full text-left px-4 py-3 text-sm transition-all flex items-center space-x-3 ${selectedProfId === prof.professionals_id
-                                            ? 'bg-blue-50 text-blue-700 font-bold'
-                                            : 'hover:bg-slate-50 text-slate-600'
-                                            }`}
-                                    >
-                                        <div className={`p-1.5 rounded-lg ${selectedProfId === prof.professionals_id ? 'bg-blue-100' : 'bg-slate-100'}`}>
-                                            <User size={16} />
-                                        </div>
-                                        <span className="truncate">{prof.professionals_name}</span>
-                                    </button>
-                                ))}
+                                {professionals.map((prof, index) => {
+                                    const isActive = configs[prof.professionals_id] ?? true;
+                                    return (
+                                        <button
+                                            key={`${prof.professionals_id}-${index}`}
+                                            onClick={() => setSelectedProfId(prof.professionals_id)}
+                                            className={`w-full text-left px-4 py-3 text-sm transition-all flex items-center space-x-3 ${selectedProfId === prof.professionals_id
+                                                ? 'bg-blue-50 text-blue-700 font-bold'
+                                                : 'hover:bg-slate-50 text-slate-600'
+                                                }`}
+                                        >
+                                            <div className={`p-1.5 rounded-lg ${isActive ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                                                <User size={16} />
+                                            </div>
+                                            <span className="truncate flex-1">{prof.professionals_name}</span>
+                                            <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
@@ -177,26 +239,17 @@ export default function ConfigPage() {
                             </div>
 
                             <div className="p-6 space-y-8">
+                                {/* Mover mensagens para popup */}
                                 {message && (
-                                    <div className={`p-4 rounded-xl flex items-center space-x-3 text-sm font-medium animate-in slide-in-from-top-2 duration-300 ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'
+                                    <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] p-4 rounded-xl flex items-center space-x-3 text-sm font-bold shadow-2xl animate-in slide-in-from-top-4 duration-300 ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
                                         }`}>
                                         {message.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
                                         <span>{message.text}</span>
+                                        <button onClick={() => setMessage(null)} className="ml-2 hover:opacity-70">
+                                            <Save size={14} className="rotate-45" />
+                                        </button>
                                     </div>
                                 )}
-
-                                {/* Templates Variables Info */}
-                                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
-                                    <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-2 flex items-center">
-                                        <AlertCircle size={14} className="mr-1" />
-                                        Variáveis Disponíveis
-                                    </h4>
-                                    <div className="flex flex-wrap gap-2">
-                                        {['{paciente_nome}', '{profissional_nome}', '{data_atendimento}', '{horario_atendimento}'].map(v => (
-                                            <code key={v} className="bg-white border border-amber-200 px-2 py-1 rounded text-xs text-amber-900 font-mono">{v}</code>
-                                        ))}
-                                    </div>
-                                </div>
 
                                 {/* Activation Status Toggle */}
                                 <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-xl">
@@ -220,46 +273,100 @@ export default function ConfigPage() {
                                     </button>
                                 </div>
 
-                                {/* Text Areas */}
-                                <div className="grid grid-cols-1 gap-6">
-                                    <div className="space-y-3">
-                                        <label className="text-sm font-bold text-slate-700 flex items-center">
-                                            <span className="w-2 h-2 rounded-full bg-amber-400 mr-2"></span>
-                                            Mensagem - Período da Manhã
-                                        </label>
-                                        <textarea
-                                            className={`w-full h-32 p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-slate-700 bg-slate-50/30 transition-all font-medium ${!isAdmin ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                            placeholder="Mensagem para quem consulta de manhã..."
-                                            value={config.template_morning}
-                                            readOnly={!isAdmin}
-                                            onChange={(e) => setConfig({ ...config, template_morning: e.target.value })}
-                                        />
-                                    </div>
+                                {/* Alternador de Período */}
+                                <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                                    <button
+                                        onClick={() => setActiveTemplate('morning')}
+                                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTemplate === 'morning' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        Período Manhã
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTemplate('afternoon')}
+                                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTemplate === 'afternoon' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                    >
+                                        Período Tarde
+                                    </button>
+                                </div>
 
-                                    <div className="space-y-3">
-                                        <label className="text-sm font-bold text-slate-700 flex items-center">
-                                            <span className="w-2 h-2 rounded-full bg-indigo-400 mr-2"></span>
-                                            Mensagem - Período da Tarde
-                                        </label>
-                                        <textarea
-                                            className={`w-full h-32 p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-slate-700 bg-slate-50/30 transition-all font-medium ${!isAdmin ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                            placeholder="Mensagem para quem consulta de tarde..."
-                                            value={config.template_afternoon}
-                                            readOnly={!isAdmin}
-                                            onChange={(e) => setConfig({ ...config, template_afternoon: e.target.value })}
-                                        />
+                                {/* Editor Integrado ao WhatsApp */}
+                                <div className="bg-[#e5ddd5] p-6 md:p-12 rounded-2xl border border-slate-200 overflow-hidden relative min-h-[300px] flex items-center justify-center">
+                                    <div className="absolute inset-0 opacity-15 pointer-events-none" style={{ backgroundImage: 'url("https://wweb.dev/assets/whatsapp-chat-wallpaper.png")', backgroundSize: '400px' }}></div>
+
+                                    <div className="relative w-full max-w-xl">
+                                        <div className="bg-[#dcf8c6] p-4 rounded-lg rounded-tr-none shadow-md relative ml-auto block w-full text-[14.2px] text-[#111b21] leading-tight group border border-[#c6e9af]">
+                                            <div className="absolute top-0 -right-2 w-0 h-0 border-t-[10px] border-t-[#dcf8c6] border-r-[10px] border-r-transparent"></div>
+
+                                            <div className="relative min-h-[120px]">
+                                                {/* Camada de Preview (Fica Embaixo) */}
+                                                <div
+                                                    className="absolute inset-0 pointer-events-none whitespace-pre-wrap break-words font-sans text-transparent select-none"
+                                                    style={{ color: 'transparent' }}
+                                                    dangerouslySetInnerHTML={{ __html: formatWhatsAppText(activeTemplate === 'morning' ? config.template_morning : config.template_afternoon, true) }}
+                                                />
+
+                                                {/* Área de Edição (Fica Em cima) */}
+                                                <textarea
+                                                    ref={textareaRef}
+                                                    className="w-full bg-transparent border-none focus:ring-0 p-0 resize-none font-sans outline-none placeholder:text-slate-400 overflow-hidden relative z-10 text-transparent caret-slate-900"
+                                                    style={{ color: 'transparent', caretColor: '#111b21' }}
+                                                    value={activeTemplate === 'morning' ? config.template_morning : config.template_afternoon}
+                                                    onChange={(e) => {
+                                                        const field = activeTemplate === 'morning' ? 'template_morning' : 'template_afternoon';
+                                                        setConfig({ ...config, [field]: e.target.value });
+                                                    }}
+                                                    placeholder="Digite sua mensagem aqui..."
+                                                    rows={1}
+                                                />
+
+                                                {/* Camada de Texto Visível Formatada */}
+                                                <div
+                                                    className="absolute inset-0 pointer-events-none whitespace-pre-wrap break-words font-sans text-[#111b21] z-0"
+                                                    dangerouslySetInnerHTML={{ __html: formatWhatsAppText(activeTemplate === 'morning' ? config.template_morning : config.template_afternoon, true) }}
+                                                />
+                                            </div>
+
+                                            <div className="flex items-center justify-between mt-2 border-t border-[#c6e9af]/50 pt-2">
+                                                <div className="text-[10px] text-slate-500 italic">
+                                                    Dica: use *negrito* e _itálico_
+                                                </div>
+                                                <div className="text-[11px] text-[#667781] flex items-center">
+                                                    <span>{new Date().getHours()}:{new Date().getMinutes().toString().padStart(2, '0')}</span>
+                                                    <span className="ml-1 text-blue-500">✓✓</span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* Scheduling Rules */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-slate-100">
+                                    <div className="space-y-4">
+                                        <div className="flex items-center space-x-2 text-slate-800">
+                                            <Calendar size={18} className="text-blue-600" />
+                                            <span className="text-sm font-bold">Horário de Disparo</span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs text-slate-500 font-bold uppercase">Hora do disparo diário</label>
+                                            <div className="flex items-center space-x-3">
+                                                <input
+                                                    type="time"
+                                                    readOnly={!isAdmin}
+                                                    className={`p-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none ${!isAdmin ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                    value={config.trigger_time}
+                                                    onChange={(e) => setConfig({ ...config, trigger_time: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-4">
                                         <div className="flex items-center space-x-2 text-slate-800">
                                             <Calendar size={18} className="text-blue-600" />
                                             <span className="text-sm font-bold">Regra Padrão</span>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs text-slate-500 font-bold uppercase">Enviar com quantos dias de antecedência?</label>
+                                            <label className="text-xs text-slate-500 font-bold uppercase">Dias de antecedência</label>
                                             <div className="flex items-center space-x-3">
                                                 <input
                                                     type="number"
@@ -270,7 +377,7 @@ export default function ConfigPage() {
                                                     value={config.days_before}
                                                     onChange={(e) => setConfig({ ...config, days_before: parseInt(e.target.value) || 1 })}
                                                 />
-                                                <span className="text-sm text-slate-600 font-medium">dia(s) antes</span>
+                                                <span className="text-sm text-slate-600 font-medium">dia(s)</span>
                                             </div>
                                         </div>
                                     </div>
@@ -281,7 +388,7 @@ export default function ConfigPage() {
                                             <span className="text-sm font-bold">Exceção: Segunda-Feira</span>
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs text-slate-500 font-bold uppercase">Para consultas na Segunda, enviar no Sábado?</label>
+                                            <label className="text-xs text-slate-500 font-bold uppercase">Antecedência p/ Segunda</label>
                                             <div className="flex items-center space-x-3">
                                                 <input
                                                     type="number"
@@ -292,7 +399,7 @@ export default function ConfigPage() {
                                                     value={config.monday_days_before}
                                                     onChange={(e) => setConfig({ ...config, monday_days_before: parseInt(e.target.value) || 2 })}
                                                 />
-                                                <span className="text-sm text-slate-600 font-medium">dia(s) antes (ex: 2 = Sábado)</span>
+                                                <span className="text-sm text-slate-600 font-medium">dia(s) (ex: 2 = Sábado)</span>
                                             </div>
                                         </div>
                                     </div>
