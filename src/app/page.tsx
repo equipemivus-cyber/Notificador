@@ -39,12 +39,9 @@ export default function Dashboard() {
       let query = supabase
         .from('clinicorp_appointments')
         .select('*')
-        .eq('business_id', '6330482543820800');
-
-      // Sort by data and horario (simplified sorting since they are strings)
-      // For real production we'd use better DB types
-      query = query.order('data_do_atendimento', { ascending: true })
-        .order('horario_inicial_do_atendimento', { ascending: true });
+        .eq('business_id', '6330482543820800')
+        .range(0, 5000)
+        .order('id', { ascending: false });
 
       const { data: aptData, error: aptError } = await query;
       if (aptError) throw aptError;
