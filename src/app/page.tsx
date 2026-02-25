@@ -17,7 +17,7 @@ export default function Dashboard() {
   const [professionalId, setProfessionalId] = useState('all');
   const [status, setStatus] = useState<FilterStatus>('Todos');
   const [turno, setTurno] = useState<FilterTurno>('Todos');
-  const [activeTab, setActiveTab] = useState<'hoje' | 'anteriores'>('hoje');
+  const [activeTab, setActiveTab] = useState<'hoje' | 'anteriores' | 'este-mes'>('hoje');
 
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -71,7 +71,17 @@ export default function Dashboard() {
           today.setHours(0, 0, 0, 0);
 
           const isPast = aptDateObj < today;
-          const matchesTab = activeTab === 'hoje' ? !isPast : isPast;
+
+          let matchesTab = false;
+          if (activeTab === 'hoje') {
+            matchesTab = !isPast;
+          } else if (activeTab === 'anteriores') {
+            matchesTab = isPast;
+          } else if (activeTab === 'este-mes') {
+            const currentMonth = today.getMonth();
+            const currentYear = today.getFullYear();
+            matchesTab = aptDateObj.getMonth() === currentMonth && aptDateObj.getFullYear() === currentYear;
+          }
 
           // Professional filter
           const matchesProf = professionalId === 'all' || apt.professional_id.toString() === professionalId;
@@ -107,11 +117,9 @@ export default function Dashboard() {
           const dateA = a.data_do_atendimento.split('/').reverse().join('');
           const dateB = b.data_do_atendimento.split('/').reverse().join('');
 
-          if (dateA !== dateB) {
-            return activeTab === 'hoje'
-              ? dateA.localeCompare(dateB) // Próximos: Ascendente
-              : dateB.localeCompare(dateA); // Anteriores: Descendente
-          }
+          return activeTab === 'anteriores'
+            ? dateB.localeCompare(dateA) // Anteriores: Descendente
+            : dateA.localeCompare(dateB); // Hoje e Este Mês: Ascendente
 
           // Then by Time
           return a.horario_inicial_do_atendimento.localeCompare(b.horario_inicial_do_atendimento);
