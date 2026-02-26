@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Professional } from '@/types';
 import { Save, User, Calendar, MessageSquare, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { confirmAction, showAlert, toast } from '@/lib/swal';
 
 interface MessageConfig {
     professional_id: number;
@@ -30,18 +31,53 @@ export default function ConfigPage() {
         trigger_time: '09:00'
     });
     const [saving, setSaving] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [configs, setConfigs] = useState<Record<number, boolean>>({});
     const [activeTemplate, setActiveTemplate] = useState<'morning' | 'afternoon'>('morning');
     const { role } = useAuth();
     const isAdmin = role === 'admin';
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (message) {
-            const timer = setTimeout(() => setMessage(null), 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [message]);
+        const fetchProfessionals = async () => {
+            setLoading(true);
+            try {
+                // 1. Buscar profissionais
+                const { data: profData, error: profError } = await supabase
+                    .from('clinicorp_professionals')
+                    .select('*')
+                    .eq('business_id', '6330482543820800')
+                    .order('professionals_name');
+
+                if (profError) throw profError;
+                setProfessionals(profData || []);
+
+                // 2. Buscar status de envio de todos
+                const { data: configsData, error: configError } = await supabase
+                    .from('clinicorp_appointments_message_configs')
+                    .select('professional_id, is_active')
+                    .eq('business_id', '6330482543820800');
+
+                if (!configError && configsData) {
+                    const configMap: Record<number, boolean> = {};
+                    configsData.forEach(c => {
+                        configMap[c.professional_id] = c.is_active;
+                    });
+                    setConfigs(configMap);
+                }
+
+                if (profData && profData.length > 0 && !selectedProfId) {
+                    setSelectedProfId(profData[0].professionals_id);
+                }
+            } catch (err) {
+                console.error('Erro ao buscar profissionais:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchProfessionals();
+    }, []);
+
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -97,8 +133,16 @@ export default function ConfigPage() {
 
     async function handleSave() {
         if (!selectedProfId) return;
+
+        const confirmed = await confirmAction(
+            'Salvar Alterações?',
+            `Deseja salvar as configurações para ${selectedProf?.professionals_name}?`,
+            'question'
+        );
+
+        if (!confirmed) return;
+
         setSaving(true);
-        setMessage(null);
 
         try {
             const { error } = await supabase
@@ -117,10 +161,13 @@ export default function ConfigPage() {
 
             if (error) throw error;
             setConfigs(prev => ({ ...prev, [selectedProfId]: config.is_active }));
-            setMessage({ type: 'success', text: 'Configuração salva com sucesso!' });
+            toast.fire({
+                icon: 'success',
+                title: 'Configuração salva com sucesso!'
+            });
         } catch (err) {
             console.error(err);
-            setMessage({ type: 'error', text: 'Erro ao salvar configuração.' });
+            showAlert('Erro', 'Não foi possível salvar a configuração.', 'error');
         } finally {
             setSaving(false);
         }
@@ -156,25 +203,36 @@ export default function ConfigPage() {
                         <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider px-2">Profissionais</h2>
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto">
-                                {professionals.map((prof, index) => {
-                                    const isActive = configs[prof.professionals_id] ?? true;
-                                    return (
-                                        <button
-                                            key={`${prof.professionals_id}-${index}`}
-                                            onClick={() => setSelectedProfId(prof.professionals_id)}
-                                            className={`w-full text-left px-4 py-3 text-sm transition-all flex items-center space-x-3 ${selectedProfId === prof.professionals_id
-                                                ? 'bg-blue-50 text-blue-700 font-bold'
-                                                : 'hover:bg-slate-50 text-slate-600'
-                                                }`}
-                                        >
-                                            <div className={`p-1.5 rounded-lg ${isActive ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                                                <User size={16} />
-                                            </div>
-                                            <span className="truncate flex-1">{prof.professionals_name}</span>
-                                            <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                        </button>
-                                    );
-                                })}
+                                {loading && professionals.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400">
+                                        <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                                        <p className="text-xs font-medium">Carregando profissionais...</p>
+                                    </div>
+                                ) : professionals.length === 0 ? (
+                                    <div className="p-8 text-center text-slate-400 italic text-sm">
+                                        Nenhum profissional encontrado.
+                                    </div>
+                                ) : (
+                                    professionals.map((prof, index) => {
+                                        const isActive = configs[prof.professionals_id] ?? true;
+                                        return (
+                                            <button
+                                                key={`${prof.professionals_id}-${index}`}
+                                                onClick={() => setSelectedProfId(prof.professionals_id)}
+                                                className={`w-full text-left px-4 py-3 text-sm transition-all flex items-center space-x-3 ${selectedProfId === prof.professionals_id
+                                                    ? 'bg-blue-50 text-blue-700 font-bold border-r-4 border-blue-600'
+                                                    : 'hover:bg-slate-50 text-slate-600'
+                                                    }`}
+                                            >
+                                                <div className={`p-1.5 rounded-lg ${isActive ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+                                                    <User size={16} />
+                                                </div>
+                                                <span className={`truncate flex-1 ${!isActive ? 'text-slate-400 italic' : ''}`}>{prof.professionals_name}</span>
+                                                <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
+                                            </button>
+                                        );
+                                    })
+                                )}
                             </div>
                         </div>
                     </div>
@@ -204,17 +262,6 @@ export default function ConfigPage() {
                             </div>
 
                             <div className="p-6 space-y-8">
-                                {/* Mover mensagens para popup */}
-                                {message && (
-                                    <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] p-4 rounded-xl flex items-center space-x-3 text-sm font-bold shadow-2xl animate-in slide-in-from-top-4 duration-300 ${message.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-                                        }`}>
-                                        {message.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-                                        <span>{message.text}</span>
-                                        <button onClick={() => setMessage(null)} className="ml-2 hover:opacity-70">
-                                            <Save size={14} className="rotate-45" />
-                                        </button>
-                                    </div>
-                                )}
 
                                 {/* Activation Status Toggle */}
                                 <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-xl">
