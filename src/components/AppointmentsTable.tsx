@@ -9,7 +9,6 @@ interface AppointmentsTableProps {
     appointments: Appointment[];
     loading: boolean;
     onViewDetails: (appointment: Appointment, mode?: 'view' | 'send') => void;
-    onSendNotification: (appointment: Appointment) => void;
     onRetry: (appointment: Appointment) => void;
 }
 
@@ -17,7 +16,6 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
     appointments,
     loading,
     onViewDetails,
-    onSendNotification,
     onRetry
 }) => {
     const { role } = useAuth();

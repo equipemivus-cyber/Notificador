@@ -36,7 +36,7 @@ export default function Dashboard() {
       setProfessionals(profData || []);
 
       // 2. Fetch appointments
-      let query = supabase
+      const query = supabase
         .from('clinicorp_appointments')
         .select('*')
         .eq('business_id', '6330482543820800')
@@ -117,9 +117,11 @@ export default function Dashboard() {
           const dateA = a.data_do_atendimento.split('/').reverse().join('');
           const dateB = b.data_do_atendimento.split('/').reverse().join('');
 
-          return activeTab === 'anteriores'
+          const dateCompare = activeTab === 'anteriores'
             ? dateB.localeCompare(dateA) // Anteriores: Descendente
             : dateA.localeCompare(dateB); // Hoje e Este Mês: Ascendente
+
+          if (dateCompare !== 0) return dateCompare;
 
           // Then by Time
           return a.horario_inicial_do_atendimento.localeCompare(b.horario_inicial_do_atendimento);
@@ -164,7 +166,7 @@ export default function Dashboard() {
       // Opcional: Você pode adicionar um feedback visual rápido aqui se desejar, 
       // mas como o webhook altera o banco, o status atualizará na próxima carga.
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Trigger error:', error);
     }
   };
@@ -226,7 +228,6 @@ export default function Dashboard() {
             appointments={appointments}
             loading={loading}
             onViewDetails={handleViewDetails}
-            onSendNotification={handleSendNotification}
             onRetry={handleSendNotification}
           />
         </div>
