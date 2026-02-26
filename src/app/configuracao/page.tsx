@@ -79,19 +79,79 @@ export default function ConfigPage() {
     }, []);
 
 
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const editorRef = useRef<HTMLDivElement>(null);
 
-    const adjustHeight = useCallback(() => {
-        const textarea = textareaRef.current;
-        if (textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = `${textarea.scrollHeight}px`;
+    // Função para salvar a posição do cursor (caret)
+    const saveCaretPosition = (element: HTMLElement) => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return 0;
+        const range = selection.getRangeAt(0);
+        const preCaretRange = range.cloneRange();
+        preCaretRange.selectNodeContents(element);
+        preCaretRange.setEnd(range.endContainer, range.endOffset);
+        return preCaretRange.toString().length;
+    };
+
+    // Função para restaurar a posição do cursor
+    const restoreCaretPosition = (element: HTMLElement, position: number) => {
+        let charCount = 0;
+        const nodeStack: Node[] = [element];
+        let node: Node | undefined;
+        const range = document.createRange();
+        range.setStart(element, 0);
+        range.collapse(true);
+
+        while ((node = nodeStack.pop())) {
+            if (node.nodeType === 3) { // Text node
+                const nextCharCount = charCount + (node.textContent?.length || 0);
+                if (position >= charCount && position <= nextCharCount) {
+                    range.setStart(node, position - charCount);
+                    range.collapse(true);
+                    const selection = window.getSelection();
+                    if (selection) {
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                    }
+                    return;
+                }
+                charCount = nextCharCount;
+            } else {
+                let i = node.childNodes.length;
+                while (i--) {
+                    nodeStack.push(node.childNodes[i]);
+                }
+            }
+        }
+    };
+
+    const updateEditorContent = useCallback((text: string) => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        // Se o texto bruto no editor já for o mesmo que o estado, não precisamos mexer
+        // Isso evita loops e perda de performance, mas permite que o formatWhatsAppText "limpe" o HTML
+        const formatted = formatWhatsAppText(text);
+
+        // Comparamos com innerHTML apenas se o innerText for diferente ou se houver "lixo" no HTML
+        // Mas a forma mais segura de limpar o vazamento de cor é resetar o innerHTML se ele não bater com o esperado
+        if (editor.innerHTML !== formatted) {
+            const position = saveCaretPosition(editor);
+            editor.innerHTML = formatted;
+            setTimeout(() => restoreCaretPosition(editor, position), 0);
         }
     }, []);
 
     useEffect(() => {
-        adjustHeight();
-    }, [config, activeTemplate, adjustHeight]);
+        const text = activeTemplate === 'morning' ? config.template_morning : config.template_afternoon;
+        updateEditorContent(text);
+    }, [activeTemplate, config.template_morning, config.template_afternoon, updateEditorContent]);
+
+    const handleEditorInput = (e: React.FormEvent<HTMLDivElement>) => {
+        // innerText é muito mais confiável para pegar o que o usuário quer dizer de verdade
+        const text = e.currentTarget.innerText;
+        const field = activeTemplate === 'morning' ? 'template_morning' : 'template_afternoon';
+        setConfig(prev => ({ ...prev, [field]: text }));
+    };
 
     const loadConfig = useCallback(async (profId: number) => {
         const { data } = await supabase
@@ -175,16 +235,45 @@ export default function ConfigPage() {
 
     const selectedProf = professionals.find(p => p.professionals_id === selectedProfId);
 
-    const formatWhatsAppText = (text: string, isPreview: boolean = false) => {
+    const formatWhatsAppText = useCallback((text: string) => {
         if (!text) return '';
 
-        return text
-            .replace(/\*(.*?)\*/g, isPreview ? '<strong class="font-bold">*$1*</strong>' : '<strong>$1</strong>')
-            .replace(/_(.*?)_/g, isPreview ? '<em class="italic">_$1_</em>' : '<em>$1</em>')
-            .replace(/~(.*?)~/g, isPreview ? '<del>~$1~</del>' : '<del>$1</del>')
-            .replace(/\{(.*?)\}/g, '<span class="text-blue-600 font-bold bg-blue-50/50 px-1 rounded">{$1}</span>')
-            .replace(/\n/g, '<br/>');
-    };
+        // 1. Dividir o texto em blocos de variáveis e blocos de texto normal
+        // O regex captura as chaves para mantê-las no array resultante do split
+        const parts = text.split(/(\{.*?\})/g);
+
+        const formattedParts = parts.map(part => {
+            // Se for uma variável (começa com { e termina com })
+            if (part.startsWith('{') && part.endsWith('}')) {
+                // Escapa a variável e aplica o azul + negrito
+                const escaped = part
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+                return `<span class="text-blue-700 font-bold">${escaped}</span>`;
+            }
+
+            // Se for texto normal
+            let formatted = part
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+
+            // Aplica Negrito (*texto*)
+            formatted = formatted.replace(/\*(.*?)\*/g, '<span class="font-bold">*$1*</span>');
+
+            // Aplica Itálico (_texto_)
+            formatted = formatted.replace(/_(.*?)_/g, '<span class="italic">_$1_</span>');
+
+            // Aplica Tachado (~texto~)
+            formatted = formatted.replace(/~(.*?)~/g, '<span class="line-through text-slate-400">~$1~</span>');
+
+            return formatted;
+        });
+
+        // Junta tudo e converte novas linhas em <br/>
+        return formattedParts.join('').replace(/\n/g, '<br/>');
+    }, []);
 
     return (
         <main className="h-full flex flex-col overflow-hidden bg-slate-50">
@@ -310,32 +399,19 @@ export default function ConfigPage() {
                                             <div className="absolute top-0 -right-2 w-0 h-0 border-t-[10px] border-t-[#dcf8c6] border-r-[10px] border-r-transparent"></div>
 
                                             <div className="relative min-h-[120px]">
-                                                {/* Camada de Preview (Fica Embaixo) */}
+                                                {/* Editor ContentEditable (CSS Nativo) */}
                                                 <div
-                                                    className="absolute inset-0 pointer-events-none whitespace-pre-wrap break-words font-sans text-transparent select-none"
-                                                    style={{ color: 'transparent' }}
-                                                    dangerouslySetInnerHTML={{ __html: formatWhatsAppText(activeTemplate === 'morning' ? config.template_morning : config.template_afternoon, true) }}
+                                                    ref={editorRef}
+                                                    contentEditable={isAdmin}
+                                                    onInput={handleEditorInput}
+                                                    className="w-full bg-transparent border-none focus:ring-0 p-0 outline-none font-sans text-[#111b21] leading-tight min-h-[120px] whitespace-pre-wrap break-words"
+                                                    style={{ fontSize: '14.2px' }}
                                                 />
-
-                                                {/* Área de Edição (Fica Em cima) */}
-                                                <textarea
-                                                    ref={textareaRef}
-                                                    className="w-full bg-transparent border-none focus:ring-0 p-0 resize-none font-sans outline-none placeholder:text-slate-400 overflow-hidden relative z-10 text-transparent caret-slate-900"
-                                                    style={{ color: 'transparent', caretColor: '#111b21' }}
-                                                    value={activeTemplate === 'morning' ? config.template_morning : config.template_afternoon}
-                                                    onChange={(e) => {
-                                                        const field = activeTemplate === 'morning' ? 'template_morning' : 'template_afternoon';
-                                                        setConfig({ ...config, [field]: e.target.value });
-                                                    }}
-                                                    placeholder="Digite sua mensagem aqui..."
-                                                    rows={1}
-                                                />
-
-                                                {/* Camada de Texto Visível Formatada */}
-                                                <div
-                                                    className="absolute inset-0 pointer-events-none whitespace-pre-wrap break-words font-sans text-[#111b21] z-0"
-                                                    dangerouslySetInnerHTML={{ __html: formatWhatsAppText(activeTemplate === 'morning' ? config.template_morning : config.template_afternoon, true) }}
-                                                />
+                                                {!(activeTemplate === 'morning' ? config.template_morning : config.template_afternoon) && (
+                                                    <div className="absolute top-0 left-0 pointer-events-none text-slate-400 italic text-[14.2px]">
+                                                        Digite sua mensagem aqui...
+                                                    </div>
+                                                )}
                                             </div>
 
                                             <div className="flex items-center justify-between mt-2 border-t border-[#c6e9af]/50 pt-2">
