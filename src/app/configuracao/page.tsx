@@ -341,7 +341,7 @@ export default function ConfigPage() {
 
                                 {/* Scheduling Rules */}
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-slate-100">
-                                    <div className="space-y-4">
+                                    <div className="space-y-4 justify-self-start">
                                         <div className="flex items-center space-x-2 text-slate-800">
                                             <Calendar size={18} className="text-blue-600" />
                                             <span className="text-sm font-bold">Horário de Disparo</span>
@@ -360,7 +360,7 @@ export default function ConfigPage() {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-4">
+                                    <div className="space-y-4 hidden">
                                         <div className="flex items-center space-x-2 text-slate-800">
                                             <Calendar size={18} className="text-blue-600" />
                                             <span className="text-sm font-bold">Regra Padrão</span>
@@ -382,7 +382,7 @@ export default function ConfigPage() {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-4">
+                                    <div className="space-y-4 hidden">
                                         <div className="flex items-center space-x-2 text-slate-800">
                                             <Calendar size={18} className="text-indigo-600" />
                                             <span className="text-sm font-bold">Exceção: Segunda-Feira</span>
