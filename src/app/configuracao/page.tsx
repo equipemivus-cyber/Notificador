@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { supabase } from '@/lib/supabase';
 import { Professional } from '@/types';
@@ -29,7 +29,6 @@ export default function ConfigPage() {
         is_active: true,
         trigger_time: '09:00'
     });
-    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [configs, setConfigs] = useState<Record<number, boolean>>({});
@@ -46,58 +45,20 @@ export default function ConfigPage() {
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    const adjustHeight = () => {
+    const adjustHeight = useCallback(() => {
         const textarea = textareaRef.current;
         if (textarea) {
             textarea.style.height = 'auto';
             textarea.style.height = `${textarea.scrollHeight}px`;
         }
-    };
-
-    useEffect(() => {
-        adjustHeight();
-    }, [config, activeTemplate]);
-
-    useEffect(() => {
-        async function loadProfessionals() {
-            setLoading(true);
-            const [{ data: profs }, { data: confs }] = await Promise.all([
-                supabase
-                    .from('clinicorp_professionals')
-                    .select('*')
-                    .eq('business_id', '6330482543820800')
-                    .order('professionals_name'),
-                supabase
-                    .from('clinicorp_appointments_message_configs')
-                    .select('professional_id, is_active')
-                    .eq('business_id', '6330482543820800')
-            ]);
-
-            if (profs) {
-                setProfessionals(profs);
-                if (profs.length > 0) setSelectedProfId(profs[0].professionals_id);
-            }
-
-            if (confs) {
-                const configMap = confs.reduce((acc, c) => ({
-                    ...acc,
-                    [c.professional_id]: c.is_active
-                }), {});
-                setConfigs(configMap);
-            }
-            setLoading(false);
-        }
-        loadProfessionals();
     }, []);
 
     useEffect(() => {
-        if (selectedProfId) {
-            loadConfig(selectedProfId);
-        }
-    }, [selectedProfId]);
+        adjustHeight();
+    }, [config, activeTemplate, adjustHeight]);
 
-    async function loadConfig(profId: number) {
-        const { data, error } = await supabase
+    const loadConfig = useCallback(async (profId: number) => {
+        const { data } = await supabase
             .from('clinicorp_appointments_message_configs')
             .select('*')
             .eq('professional_id', profId)
@@ -126,7 +87,13 @@ export default function ConfigPage() {
                 trigger_time: '09:00'
             });
         }
-    }
+    }, []);
+
+    useEffect(() => {
+        if (selectedProfId) {
+            loadConfig(selectedProfId);
+        }
+    }, [selectedProfId, loadConfig]);
 
     async function handleSave() {
         if (!selectedProfId) return;
@@ -164,14 +131,12 @@ export default function ConfigPage() {
     const formatWhatsAppText = (text: string, isPreview: boolean = false) => {
         if (!text) return '';
 
-        let formatted = text
+        return text
             .replace(/\*(.*?)\*/g, isPreview ? '<strong class="font-bold">*$1*</strong>' : '<strong>$1</strong>')
             .replace(/_(.*?)_/g, isPreview ? '<em class="italic">_$1_</em>' : '<em>$1</em>')
             .replace(/~(.*?)~/g, isPreview ? '<del>~$1~</del>' : '<del>$1</del>')
             .replace(/\{(.*?)\}/g, '<span class="text-blue-600 font-bold bg-blue-50/50 px-1 rounded">{$1}</span>')
             .replace(/\n/g, '<br/>');
-
-        return formatted;
     };
 
     return (

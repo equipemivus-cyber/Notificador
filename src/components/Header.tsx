@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Settings, RefreshCw, Search } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
 
 import Link from 'next/link';
 

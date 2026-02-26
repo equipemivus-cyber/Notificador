@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, User, Phone, Calendar, Clock, Stethoscope, MessageSquare, History, CheckCircle, Send, AlertCircle, Loader2 } from 'lucide-react';
 import { Appointment } from '@/types';
 import { useAuth } from '@/context/AuthContext';
@@ -30,21 +30,8 @@ export const AppointmentDetailsModal: React.FC<ModalProps> = ({
     const [loadingTemplate, setLoadingTemplate] = useState(false);
     const [isSending, setIsSending] = useState(false);
 
-    useEffect(() => {
-        if (!isOpen) {
-            setIsEditing(false);
-            setMessageText('');
-            setIsSending(false);
-        } else if (initialMode === 'send' && appointment) {
-            handlePrepareMessage();
-        }
-    }, [isOpen, initialMode]);
-
-    if (!isOpen || !appointment) return null;
-
-    const isPhoneInvalid = !appointment.paciente_telefone || appointment.paciente_telefone === '0' || appointment.paciente_telefone.length < 8;
-
-    const handlePrepareMessage = async () => {
+    const handlePrepareMessage = useCallback(async () => {
+        if (!appointment) return;
         setLoadingTemplate(true);
         try {
             // Fetch professional's template
@@ -84,7 +71,24 @@ export const AppointmentDetailsModal: React.FC<ModalProps> = ({
         } finally {
             setLoadingTemplate(false);
         }
-    };
+    }, [appointment]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setIsEditing(false);
+            setMessageText('');
+            setIsSending(false);
+        } else if (initialMode === 'send' && appointment) {
+            handlePrepareMessage();
+        }
+    }, [isOpen, initialMode, appointment, handlePrepareMessage]);
+
+    const isPhoneInvalid = useMemo(() => {
+        if (!appointment) return true;
+        return !appointment.paciente_telefone || appointment.paciente_telefone === '0' || appointment.paciente_telefone.length < 8;
+    }, [appointment]);
+
+    if (!isOpen || !appointment) return null;
 
     const handleConfirmSend = async () => {
         setIsSending(true);

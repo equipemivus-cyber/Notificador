@@ -1,17 +1,15 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { LoginPage } from "@/components/LoginPage";
 import { Sidebar } from "@/components/Sidebar";
 
+const emptySubscribe = () => () => { };
+
 function AppContent({ children }: { children: React.ReactNode }) {
     const { isAuthenticated } = useAuth();
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => {
-        setMounted(true);
-    }, []);
+    const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
     if (!mounted) return null;
 

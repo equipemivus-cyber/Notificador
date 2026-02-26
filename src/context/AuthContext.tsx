@@ -18,17 +18,32 @@ const ADMIN_CODE = 'Admin!0987';
 const USER_CODE = 'User@4566';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [role, setRole] = useState<UserRole>(null);
-
-    // Verificar se já existe login salvo no localStorage ao carregar
-    useEffect(() => {
-        const savedRole = localStorage.getItem('mivus_auth_role');
-        if (savedRole === 'admin' || savedRole === 'user') {
-            setIsAuthenticated(true);
-            setRole(savedRole as UserRole);
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            const savedRole = localStorage.getItem('mivus_auth_role');
+            return savedRole === 'admin' || savedRole === 'user';
         }
-    }, []);
+        return false;
+    });
+
+    const [role, setRole] = useState<UserRole>(() => {
+        if (typeof window !== 'undefined') {
+            const savedRole = localStorage.getItem('mivus_auth_role');
+            if (savedRole === 'admin' || savedRole === 'user') {
+                return savedRole as UserRole;
+            }
+        }
+        return null;
+    });
+
+    // Sincronizar estado com localStorage (opcional, já feito no login/logout mas garante consistência)
+    useEffect(() => {
+        if (isAuthenticated && role) {
+            localStorage.setItem('mivus_auth_role', role);
+        } else if (!isAuthenticated) {
+            localStorage.removeItem('mivus_auth_role');
+        }
+    }, [isAuthenticated, role]);
 
     const login = (code: string): boolean => {
         if (code === ADMIN_CODE) {
