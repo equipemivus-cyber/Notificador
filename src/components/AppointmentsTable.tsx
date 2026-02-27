@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Eye, Send, RotateCcw, PhoneOff, AlertCircle, CheckCircle2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Eye, Send, RotateCcw, PhoneOff, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Appointment } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 
@@ -20,6 +20,20 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
 }) => {
     const { role } = useAuth();
     const isAdmin = role === 'admin';
+
+    const [currentPage, setCurrentPage] = useState(1);
+    const [prevAppointments, setPrevAppointments] = useState(appointments);
+    const itemsPerPage = 50;
+
+    // Reseta a página quando a lista de apontamentos muda (filtros, busca)
+    if (appointments !== prevAppointments) {
+        setPrevAppointments(appointments);
+        setCurrentPage(1);
+    }
+
+    const totalPages = Math.ceil(appointments.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const paginatedAppointments = appointments.slice(startIndex, startIndex + itemsPerPage);
 
     if (loading) {
         return (
@@ -99,7 +113,7 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {appointments.map((apt, index) => (
+                        {paginatedAppointments.map((apt, index) => (
                             <tr key={`${apt.appointment_id}-${index}`} className="hover:bg-slate-50/50 transition-colors group">
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <div className="font-semibold text-slate-800 uppercase text-sm truncate max-w-[200px]" title={apt.paciente_nome}>
@@ -162,6 +176,34 @@ export const AppointmentsTable: React.FC<AppointmentsTableProps> = ({
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination Footer */}
+            {totalPages > 1 && (
+                <div className="border-t border-slate-200 px-6 py-4 flex items-center justify-between bg-slate-50 shrink-0">
+                    <div className="text-sm text-slate-500">
+                        Mostrando <span className="font-semibold text-slate-700">{startIndex + 1}</span> a <span className="font-semibold text-slate-700">{Math.min(startIndex + itemsPerPage, appointments.length)}</span> de <span className="font-semibold text-slate-700">{appointments.length}</span> resultados
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="p-1 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+                        <span className="text-sm font-medium text-slate-700">
+                            Página {currentPage} de {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="p-1 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <ChevronRight size={20} />
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
