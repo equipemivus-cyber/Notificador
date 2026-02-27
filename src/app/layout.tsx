@@ -7,7 +7,6 @@ export const metadata: Metadata = {
 };
 
 import { AuthProviderWrapper } from "@/components/AuthProviderWrapper";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -15,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className="antialiased flex h-screen overflow-hidden bg-slate-50">
+      <body className="antialiased flex h-screen overflow-hidden bg-zinc-950 font-sans">
         <AuthProviderWrapper>
           {children}
         </AuthProviderWrapper>
