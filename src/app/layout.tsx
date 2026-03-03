@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Notificador Mivus",
   description: "Sistema de notificações para agendamentos",
+  icons: {
+    icon: "/favicon.ico.svg",
+  },
 };
 
 import { AuthProviderWrapper } from "@/components/AuthProviderWrapper";
